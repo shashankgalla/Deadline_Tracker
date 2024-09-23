@@ -1,4 +1,4 @@
-# :earth_americas: GDP dashboard template
+# :earth_americas: Deadline tracker
 
 Deadline Tracker
 
