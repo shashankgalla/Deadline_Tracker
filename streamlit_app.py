@@ -2,6 +2,49 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime, time
+import streamlit_authenticator as stauth
+
+import streamlit as st
+import streamlit_authenticator as stauth
+
+# Define the credentials (username and password) for allowed users
+names = ['User One', 'User Two']
+usernames = ['user1', 'user2']
+passwords = ['password1', 'password2']
+
+# Hash the passwords for security
+hashed_passwords = stauth.Hasher(passwords).generate()
+
+# Set up the authenticator with proper parameters
+credentials = {
+    "usernames": {
+        "user1": {"name": "User One", "password": hashed_passwords[0]},
+        "user2": {"name": "User Two", "password": hashed_passwords[1]},
+    }
+}
+
+authenticator = stauth.Authenticate(
+    credentials=credentials,
+    cookie_name="streamlit_auth",      # Custom cookie name
+    cookie_key="auth_key",             # Secret key for cookie signature
+    cookie_expiry_days=1               # Cookie expiry
+)
+
+# Create a login form
+name, authentication_status, username = authenticator.login("Login", "main")  # "main" must be lowercase
+
+# Handle the authentication status
+if authentication_status:
+    st.success(f"Welcome {name}!")
+    st.write("Only authenticated users can access this area.")
+    # Add your app logic here
+elif authentication_status == False:
+    st.error("Username/password is incorrect")
+elif authentication_status == None:
+    st.warning("Please enter your username and password")
+
+
+
 
 # Connect to the SQLite database
 conn = sqlite3.connect('deadlines_db.sqlite')
