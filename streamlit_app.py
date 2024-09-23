@@ -1,151 +1,166 @@
 import streamlit as st
+import sqlite3
 import pandas as pd
-import math
-from pathlib import Path
+from datetime import datetime, time
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
+# Connect to the SQLite database
+conn = sqlite3.connect('deadlines_db.sqlite')
+cursor = conn.cursor()
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# Function to add new tasks (with date and time)
+def add_task(task_name, start_date, deadline_date):
+    cursor.execute('''
+        INSERT INTO tasks (task_name, start_date, deadline_date)
+        VALUES (?, ?, ?)
+    ''', (task_name, start_date.strftime('%Y-%m-%d %H:%M:%S'), deadline_date.strftime('%Y-%m-%d %H:%M:%S')))
+    conn.commit()
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# Function to get tasks for a specific date
+def get_tasks_by_date(selected_date):
+    query = "SELECT id, task_name, deadline_date FROM tasks WHERE date(deadline_date) = ?"
+    cursor.execute(query, (selected_date,))
+    return cursor.fetchall()
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+# Function to delete a task by ID
+def delete_task(task_id):
+    cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+    conn.commit()
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+# Streamlit App
+st.title("📧 Real-Time Deadline Tracker")
+st.markdown("""
+    Welcome to your personalized deadline tracker! Here, you can add tasks, view tasks by date, and manage deadlines in a streamlined way.
+""")
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+# Sidebar for daily updates
+with st.sidebar:
+    st.header("📝 Add New Task")
+    task_name = st.text_input("Task Name")
+    
+    # Start Date
+    start_date = st.date_input("Start Date", datetime.today())
+    
+    # Custom time input for Start Time
+    start_hour = st.number_input("Start Hour (0-23)", min_value=0, max_value=23, value=datetime.now().hour)
+    start_minute = st.number_input("Start Minute (0-59)", min_value=0, max_value=59, value=datetime.now().minute)
+    start_time = time(start_hour, start_minute)
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+    # Deadline Date
+    deadline_date = st.date_input("Deadline Date", datetime.today())
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+    # Custom time input for Deadline Time
+    deadline_hour = st.number_input("Deadline Hour (0-23)", min_value=0, max_value=23, value=datetime.now().hour)
+    deadline_minute = st.number_input("Deadline Minute (0-59)", min_value=0, max_value=59, value=datetime.now().minute)
+    deadline_time = time(deadline_hour, deadline_minute)
 
-    return gdp_df
+    # Combine the date and time fields
+    start_datetime = datetime.combine(start_date, start_time)
+    deadline_datetime = datetime.combine(deadline_date, deadline_time)
 
-gdp_df = get_gdp_data()
+    if st.button("Add Task"):
+        add_task(task_name, start_datetime, deadline_datetime)
+        st.success("Task added successfully!")
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+# Display today's deadlines
+st.header(f"📅 Deadlines for Today ({datetime.now().date()}):")
+tasks_due_today = get_tasks_by_date(datetime.now().strftime('%Y-%m-%d'))
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
+# Apply custom CSS to style the table and background
+st.markdown("""
+    <style>
+    body {
+        background-color: #f0f8ff;
+        font-family: 'Arial', sans-serif;
+    }
+    .styled-table {
+        font-size: 18px;
+        border-collapse: collapse;
+        margin: 25px 0;
+        width: 100%;
+        color: #333;
+    }
+    .styled-table th, .styled-table td {
+        border: 1px solid #dddddd;
+        text-align: center;
+        padding: 12px;
+        max-width: 200px;  /* Set a max width to handle large text */
+        word-wrap: break-word; /* Force long text to wrap */
+    }
+    .styled-table th {
+        background-color: #ffcccb; /* Light pink */
+        font-weight: bold;
+        color: #333;
+    }
+    .styled-table tr:nth-child(even) {
+        background-color: #f0f0f0; /* Light gray for even rows */
+    }
+    .styled-table tr:nth-child(odd) {
+        background-color: #ffffff; /* White for odd rows */
+    }
+    .table-container {
+        overflow-x: auto; /* Allow horizontal scrolling if needed */
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+# Display the table with custom styling
+if tasks_due_today:
+    df_today = pd.DataFrame(tasks_due_today, columns=["ID", "Task Name", "Deadline"])
+    df_today['Deadline'] = pd.to_datetime(df_today['Deadline'])
+    
+    # Sort by Deadline time
+    df_today = df_today.sort_values(by='Deadline', ascending=True)
 
-# Add some spacing
-''
-''
+    # Format deadline to display as '%Y-%m-%d %H:%M:%S'
+    df_today['Deadline'] = df_today['Deadline'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+    # Convert the DataFrame to an HTML table with custom CSS styling
+    st.markdown(f"""
+    <div class="table-container">
+    <table class="styled-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Task Name</th>
+                <th>Deadline</th>
+            </tr>
+        </thead>
+        <tbody>
+            {"".join([f"<tr><td>{row.ID}</td><td>{row['Task Name']}</td><td>{row.Deadline}</td></tr>" for index, row in df_today.iterrows()])}
+        </tbody>
+    </table>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.info("No tasks due today.")
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+# Section to view deadlines by selected date
+st.header("🔍 View Deadlines by Custom Date")
+selected_date = st.date_input("Select a Date")
+tasks_selected_date = get_tasks_by_date(selected_date.strftime('%Y-%m-%d'))
 
-countries = gdp_df['Country Code'].unique()
+if tasks_selected_date:
+    st.subheader(f"Deadlines for {selected_date}:")
+    df_selected = pd.DataFrame(tasks_selected_date, columns=["ID", "Task Name", "Deadline"])
+    df_selected['Deadline'] = pd.to_datetime(df_selected['Deadline'])
+    df_selected['Deadline'] = df_selected['Deadline'].dt.strftime('%Y-%m-%d %H:%M:%S')
+    st.dataframe(df_selected)
+else:
+    st.info(f"No tasks due for {selected_date}.")
 
-if not len(countries):
-    st.warning("Select at least one country")
+# Section to delete tasks
+st.header("🗑️ Delete a Task")
+if tasks_selected_date:
+    task_id_to_delete = st.selectbox("Select Task ID to Delete", df_selected['ID'].values)
+    if st.button("Delete Task"):
+        delete_task(task_id_to_delete)
+        st.warning("Task deleted! Please refresh to see updated tasks.")
 
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+# Footer aesthetics
+st.markdown("---")
+st.write("Made with ❤️ by Shashank, using Streamlit to keep track of your deadlines.")
+st.markdown("Stay organized and never miss a deadline again!")
 
-''
-''
-''
+# Close the database connection
+conn.close()
 
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
