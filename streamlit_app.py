@@ -52,6 +52,13 @@ def get_tasks_by_date(selected_date):
 def delete_task(task_id):
     cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
     conn.commit()
+# Function to get upcoming tasks after today's date
+def get_upcoming_tasks():
+    query = "SELECT id, task_name, deadline_date FROM tasks WHERE date(deadline_date) > ?"
+    cursor.execute(query, (datetime.now().strftime('%Y-%m-%d'),))
+    return cursor.fetchall()
+
+
 
 # Handle the authentication status
 if authentication_status:
@@ -161,6 +168,39 @@ if authentication_status:
         """, unsafe_allow_html=True)
     else:
         st.info("No tasks due today.")
+    # Display upcoming deadlines
+    st.header("📅 Upcoming Deadlines (After Today):")
+    upcoming_tasks = get_upcoming_tasks()
+
+    if upcoming_tasks:
+        df_upcoming = pd.DataFrame(upcoming_tasks, columns=["ID", "Task Name", "Deadline"])
+        df_upcoming['Deadline'] = pd.to_datetime(df_upcoming['Deadline'])
+
+        # Sort by Deadline time
+        df_upcoming = df_upcoming.sort_values(by='Deadline', ascending=True)
+
+        # Format deadline to display as '%Y-%m-%d %H:%M:%S'
+        df_upcoming['Deadline'] = df_upcoming['Deadline'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        # Display the DataFrame with custom styling
+        st.markdown(f"""
+        <div class="table-container">
+        <table class="styled-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Task Name</th>
+                    <th>Deadline</th>
+                </tr>
+            </thead>
+            <tbody>
+                {"".join([f"<tr><td>{row.ID}</td><td>{row['Task Name']}</td><td>{row.Deadline}</td></tr>" for index, row in df_upcoming.iterrows()])}
+            </tbody>
+        </table>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info("No upcoming tasks.")
 
     # Section to view deadlines by selected date
     st.header("🔍 View Deadlines by Custom Date")
