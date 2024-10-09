@@ -1,6 +1,6 @@
 streamlit
 streamlit-authenticator==0.3.3
 pandas
-sqlite3
+
 
 
